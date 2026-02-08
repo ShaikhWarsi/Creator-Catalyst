@@ -5,9 +5,10 @@ Analyzes historical content performance and generates actionable "Next Steps".
 
 import json
 from typing import List, Dict, Optional
-from src.core.llm_wrapper import LLMWrapper
+from src.core.llm_wrapper import LLMWrapper, parse_json_response
 from src.core.engagement_scorer import EngagementScorer, get_engagement_scorer
-from src.database.database import Database, Video, ContentOutput
+from src.core.models import Video, ContentOutput, ShortsIdea
+from src.database.database import Database
 
 class StrategyAdvisor:
     """Provides AI-generated strategy tips based on content performance."""
@@ -34,8 +35,8 @@ class StrategyAdvisor:
         performance_data = []
         for output in outputs:
             if output.content_type in ["blog_post", "social_post", "shorts_idea"]:
-                # Check if score is already in metadata
-                metadata = output.to_dict().get('metadata', {})
+                # Pydantic model automatically parses metadata JSON into a dict
+                metadata = output.metadata if isinstance(output.metadata, dict) else {}
                 
                 if 'engagement_score' in metadata:
                     performance_data.append({
@@ -49,11 +50,10 @@ class StrategyAdvisor:
                     # Calculate if missing (for legacy data)
                     content_text = output.content
                     if output.content_type == "shorts_idea":
-                        try:
-                            idea = json.loads(output.content)
-                            content_text = f"Topic: {idea.get('topic')}. Hook: {idea.get('hook')}"
-                        except:
-                            pass
+                        # Use centralized JSON extraction and model validation
+                        idea = parse_json_response(output.content, ShortsIdea)
+                        if idea:
+                            content_text = f"Topic: {idea.topic}. Hook: {idea.hook}"
                     
                     score = self.scorer.score_content(content_text, output.content_type)
                     performance_data.append({

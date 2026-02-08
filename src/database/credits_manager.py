@@ -6,7 +6,8 @@ Handles credit tracking, deduction, and validation for monetization.
 import sqlite3
 import logging
 from datetime import datetime
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, List
+from src.core.models import UserCredits, CreditTransaction
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -234,7 +235,7 @@ class CreditsManager:
         self, 
         user_id: str = 'default_user',
         limit: int = 50
-    ) -> list:
+    ) -> List[CreditTransaction]:
         """Get transaction history for user."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -245,19 +246,7 @@ class CreditsManager:
                 LIMIT ?
             """, (user_id, limit))
             
-            transactions = []
-            for row in cursor.fetchall():
-                transactions.append({
-                    'id': row['id'],
-                    'type': row['transaction_type'],
-                    'amount': row['amount'],
-                    'balance_after': row['balance_after'],
-                    'operation': row['operation_type'],
-                    'description': row['description'],
-                    'created_at': row['created_at']
-                })
-            
-            return transactions
+            return [CreditTransaction.from_row(row) for row in cursor.fetchall()]
     
     def get_user_stats(self, user_id: str = 'default_user') -> Dict:
         """Get comprehensive stats for user."""
@@ -268,9 +257,9 @@ class CreditsManager:
             cursor.execute("""
                 SELECT * FROM user_credits WHERE user_id = ?
             """, (user_id,))
-            credits_row = cursor.fetchone()
+            user_credits = UserCredits.from_row(cursor.fetchone())
             
-            if not credits_row:
+            if not user_credits:
                 return {
                     'current_balance': 0,
                     'total_earned': 0,
@@ -295,10 +284,10 @@ class CreditsManager:
                     }
             
             return {
-                'current_balance': credits_row['current_balance'],
-                'total_earned': credits_row['total_earned'],
-                'total_spent': credits_row['total_spent'],
-                'last_updated': credits_row['last_updated'],
+                'current_balance': user_credits.current_balance,
+                'total_earned': user_credits.total_earned,
+                'total_spent': user_credits.total_spent,
+                'last_updated': user_credits.last_updated,
                 'operation_counts': operation_counts
             }
     

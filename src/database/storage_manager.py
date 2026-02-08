@@ -15,8 +15,9 @@ from pathlib import Path
 # Initialize logger
 logger = logging.getLogger(__name__)
 
-from src.database.database import get_database, Database, Video, ContentOutput, GroundingReport
-from src.core.engagement_scorer import get_engagement_scorer, EngagementScore
+from src.core.models import Video, ContentOutput, GroundingReport, EngagementScore, ShortsIdea
+from src.database.database import get_database, Database
+from src.core.engagement_scorer import get_engagement_scorer
 
 
 class StorageManager:
@@ -131,13 +132,13 @@ class StorageManager:
             video_id=video_id,
             content_type="captions",
             content=captions,
-            metadata=json.dumps({
+            metadata={
                 "format": "srt", 
                 "language": "en",
                 "engagement_score": score.overall_score,
                 "sentiment": score.sentiment,
                 "readability": score.readability_score
-            }),
+            },
             version=self._get_next_version(video_id, "captions"),
         )
         self.db.save_content(content)
@@ -150,37 +151,22 @@ class StorageManager:
         score = self.scorer.score_content(blog_post, "blog_post")
         
         metadata = {
-            "word_count": len(blog_post.split()),
-            "has_original": original is not None,
             "engagement_score": score.overall_score,
             "sentiment": score.sentiment,
             "readability": score.readability_score,
-            "virality": score.virality_score,
-            "recommended_platform": score.recommended_platform
+            "virality": score.virality_score
         }
-
         if original:
-            metadata["original_word_count"] = len(original.split())
-
+            metadata["original_content"] = original
+            
         content = ContentOutput(
             video_id=video_id,
             content_type="blog_post",
             content=blog_post,
-            metadata=json.dumps(metadata),
+            metadata=metadata,
             version=self._get_next_version(video_id, "blog_post"),
         )
         self.db.save_content(content)
-
-        # Save original if filtered
-        if original and original != blog_post:
-            original_content = ContentOutput(
-                video_id=video_id,
-                content_type="blog_post_original",
-                content=original,
-                metadata=json.dumps({"is_unfiltered": True}),
-                version=self._get_next_version(video_id, "blog_post_original"),
-            )
-            self.db.save_content(original_content)
 
     def _save_social_post(self, video_id: int, social_post: str):
         """Save social media post."""
@@ -191,62 +177,52 @@ class StorageManager:
             video_id=video_id,
             content_type="social_post",
             content=social_post,
-            metadata=json.dumps(
-                {
-                    "character_count": len(social_post),
-                    "has_hashtags": "#" in social_post,
-                    "engagement_score": score.overall_score,
-                    "sentiment": score.sentiment,
-                    "readability": score.readability_score,
-                    "virality": score.virality_score,
-                    "recommended_platform": score.recommended_platform
-                }
-            ),
+            metadata={
+                "engagement_score": score.overall_score,
+                "sentiment": score.sentiment,
+                "readability": score.readability_score,
+                "virality": score.virality_score
+            },
             version=self._get_next_version(video_id, "social_post"),
         )
         self.db.save_content(content)
 
     def _save_shorts_ideas(self, video_id: int, shorts_ideas: List[Dict]):
-        """Save short clip ideas."""
+        """Save generated shorts ideas."""
         for i, idea in enumerate(shorts_ideas):
-            # Score each idea (topic + hook)
-            content_to_score = f"{idea.get('topic', '')} {idea.get('hook', '')}"
-            score = self.scorer.score_content(content_to_score, "shorts_idea")
-            
-            metadata = {
-                "index": i,
-                "topic": idea.get("topic", ""),
-                "start_time": idea.get("start_time", ""),
-                "end_time": idea.get("end_time", ""),
-                "engagement_score": score.overall_score,
-                "virality": score.virality_score
-            }
+            # Score content
+            idea_text = f"{idea.get('topic', '')} {idea.get('hook', '')} {idea.get('summary', '')}"
+            score = self.scorer.score_content(idea_text, "shorts_idea")
             
             content = ContentOutput(
                 video_id=video_id,
                 content_type="shorts_idea",
                 content=json.dumps(idea),
-                metadata=json.dumps(metadata),
+                metadata={
+                    "idea_index": i,
+                    "engagement_score": score.overall_score,
+                    "sentiment": score.sentiment,
+                    "readability": score.readability_score,
+                    "virality": score.virality_score
+                },
                 version=self._get_next_version(video_id, "shorts_idea"),
-                validation_status=idea.get("validation_status"),
-                grounding_rate=idea.get("evidence_score"),
             )
             self.db.save_content(content)
 
-    def _save_thumbnail_ideas(self, video_id: int, thumbnail_ideas: List[str]):
-        """Save thumbnail generation prompts."""
+    def _save_thumbnail_ideas(self, video_id: int, thumbnail_ideas: List[Dict]):
+        """Save generated thumbnail ideas."""
         for i, idea in enumerate(thumbnail_ideas):
             content = ContentOutput(
                 video_id=video_id,
                 content_type="thumbnail_idea",
-                content=idea,
-                metadata=json.dumps({"index": i, "prompt_length": len(idea)}),
+                content=idea if isinstance(idea, str) else json.dumps(idea),
+                metadata={"idea_index": i},
                 version=self._get_next_version(video_id, "thumbnail_idea"),
             )
             self.db.save_content(content)
 
     def _save_grounding_report(self, video_id: int, grounding_metadata: Dict):
-        """Save grounding validation report."""
+        """Save fact-grounding verification report."""
         if not grounding_metadata.get("enabled"):
             return
 
@@ -273,9 +249,9 @@ class StorageManager:
             total_claims=total_claims,
             verified_claims=verified_claims,
             unverified_claims=total_claims - verified_claims,
-            full_report=json.dumps(full_report),
+            full_report=full_report,
+            created_at=datetime.now().isoformat()
         )
-
         self.db.save_grounding_report(report)
 
     def _get_next_version(self, video_id: int, content_type: str) -> int:

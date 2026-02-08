@@ -8,7 +8,6 @@ import re
 import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
 from typing import Dict, List, Tuple, Optional
-from dataclasses import dataclass
 
 # Download required NLTK data
 try:
@@ -21,19 +20,7 @@ except LookupError:
     nltk.download('punkt', quiet=True)
 
 
-@dataclass
-class EngagementScore:
-    """Represents an engagement score with detailed breakdown."""
-    overall_score: int  # 0-100
-    platform_scores: Dict[str, int]  # Platform-specific scores
-    recommended_platform: str
-    strengths: List[str]
-    improvements: List[str]
-    engagement_factors: Dict[str, float]  # Detailed factor breakdown
-    sentiment: Dict[str, float]  # Sentiment analysis results
-    readability_score: float  # Flesch-Kincaid Ease or similar
-    virality_score: float  # Predicted virality potential
-    optimal_posting_time: Optional[str] = None
+from src.core.models import EngagementScore
 
 
 class EngagementScorer:

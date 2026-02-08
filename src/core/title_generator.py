@@ -6,47 +6,10 @@ Generates catchy, engaging titles for videos and shorts using AI.
 import re
 import logging
 from typing import List, Dict, Optional
-from dataclasses import dataclass
+from src.core.models import TitleSuggestion, TitleGenerationResult
 
 # Initialize logger
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class TitleSuggestion:
-    """Represents a single title suggestion with metadata."""
-    title: str
-    style: str  # e.g., "curiosity", "listicle", "how-to", "secret"
-    hook_type: str  # e.g., "question", "number", "power_word", "mystery"
-    estimated_ctr: str  # "high", "medium", "low"
-    
-    def to_dict(self) -> dict:
-        return {
-            'title': self.title,
-            'style': self.style,
-            'hook_type': self.hook_type,
-            'estimated_ctr': self.estimated_ctr
-        }
-
-
-@dataclass  
-class TitleGenerationResult:
-    """Contains all generated titles for a video/short."""
-    original_titles: List[TitleSuggestion]
-    shorts_titles: Dict[int, List[TitleSuggestion]]  # short_index -> titles
-    selected_original_title: Optional[str] = None
-    selected_shorts_titles: Optional[Dict[int, str]] = None
-    
-    def to_dict(self) -> dict:
-        return {
-            'original_titles': [t.to_dict() for t in self.original_titles],
-            'shorts_titles': {
-                k: [t.to_dict() for t in v] 
-                for k, v in self.shorts_titles.items()
-            },
-            'selected_original_title': self.selected_original_title,
-            'selected_shorts_titles': self.selected_shorts_titles
-        }
 
 
 class TitleGenerator:

@@ -11,28 +11,10 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from contextlib import contextmanager
 from pathlib import Path
-from dataclasses import dataclass
+from src.core.models import AIRequest
 
 # Initialize logger
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class AIRequest:
-    """Represents a single AI API request."""
-    id: Optional[int] = None
-    user_id: str = "default_user"
-    endpoint: str = ""
-    provider: str = ""  # gemini, openai, ollama, huggingface
-    operation_type: str = ""  # video_analysis, text_generation, image_generation
-    tokens_used: int = 0
-    cost_credits: float = 0.0
-    cost_usd: float = 0.0
-    response_time_ms: int = 0
-    success: bool = True
-    error_message: Optional[str] = None
-    request_metadata: str = "{}"  # JSON string
-    created_at: str = ""
 
 
 class AIRequestLogger:
@@ -313,7 +295,7 @@ class AIRequestLogger:
         provider: Optional[str] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
-    ) -> List[Dict]:
+    ) -> List[AIRequest]:
         """Get AI request history with optional filters."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -338,24 +320,7 @@ class AIRequestLogger:
             
             cursor.execute(query, params)
             
-            requests = []
-            for row in cursor.fetchall():
-                requests.append({
-                    'id': row['id'],
-                    'endpoint': row['endpoint'],
-                    'provider': row['provider'],
-                    'operation_type': row['operation_type'],
-                    'tokens_used': row['tokens_used'],
-                    'cost_credits': row['cost_credits'],
-                    'cost_usd': row['cost_usd'],
-                    'response_time_ms': row['response_time_ms'],
-                    'success': bool(row['success']),
-                    'error_message': row['error_message'],
-                    'metadata': json.loads(row['request_metadata']),
-                    'created_at': row['created_at']
-                })
-            
-            return requests
+            return [AIRequest.from_row(row) for row in cursor.fetchall()]
     
     def get_usage_analytics(
         self,

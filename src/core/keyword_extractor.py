@@ -13,8 +13,7 @@ from typing import List, Optional, Dict
 logger = logging.getLogger(__name__)
 
 try:
-    from src.core.llm_wrapper import LLMWrapper
-
+    from src.core.llm_wrapper import LLMWrapper, parse_json_response
     LLM_AVAILABLE = True
 except ImportError:
     LLM_AVAILABLE = False
@@ -60,6 +59,7 @@ class KeywordExtractor:
         if self.llm_client:
             keywords = self._extract_with_llm(text, num_keywords, content_type)
             if keywords:
+                logger.info(f"Successfully extracted {len(keywords)} keywords using LLM")
                 return keywords
 
         # Fallback to simple extraction
@@ -97,43 +97,28 @@ Respond with ONLY the JSON array:"""
             response = self.llm_client.generate(prompt)
 
             if response:
-                # Parse JSON response
-                try:
-                    # Clean response
-                    cleaned = response.strip()
+                # Use the centralized JSON extraction helper
+                keywords = parse_json_response(response)
 
-                    # Remove markdown code blocks if present
-                    if "```" in cleaned:
-                        cleaned = cleaned.split("```")[1].strip()
-
-                    # Remove 'json' prefix if present
-                    if cleaned.startswith("json"):
-                        cleaned = cleaned[4:].strip()
-
-                    # Parse JSON
-                    keywords = json.loads(cleaned)
-
+                if isinstance(keywords, list):
                     # Validate and clean
-                    if isinstance(keywords, list):
-                        keywords = [
-                            kw.lower().strip()
-                            for kw in keywords
-                            if isinstance(kw, str) and kw.strip()
-                        ]
-                        # Remove duplicates while preserving order
-                        seen = set()
-                        unique = []
-                        for kw in keywords:
-                            if kw not in seen:
-                                unique.append(kw)
-                                seen.add(kw)
-                        return unique[:num_keywords]
-                except (json.JSONDecodeError, ValueError, TypeError) as e:
-                    logger.warning(f"Failed to parse LLM response for keywords: {e}")
-                    return None
+                    keywords = [
+                        kw.lower().strip()
+                        for kw in keywords
+                        if isinstance(kw, str) and kw.strip()
+                    ]
+                    # Remove duplicates while preserving order
+                    seen = set()
+                    unique = []
+                    for kw in keywords:
+                        if kw not in seen:
+                            unique.append(kw)
+                            seen.add(kw)
+                    return unique[:num_keywords]
+                
+                logger.warning(f"LLM response for keywords was not a list: {type(keywords)}")
         except Exception as e:
             logger.error(f"LLM keyword extraction failed: {e}")
-            return None
 
         return None
 

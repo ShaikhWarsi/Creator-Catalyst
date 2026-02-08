@@ -7,34 +7,13 @@ Refactored for Issue #52: Uses Vector-Based RAG (Semantic Search).
 import re
 import logging
 from typing import List, Dict, Tuple, Optional
-from dataclasses import dataclass
+from src.core.models import TranscriptSegment, GroundingReport
 import numpy as np
 from sentence_transformers import SentenceTransformer, util
 import torch
 
 # Initialize logger
 logger = logging.getLogger(__name__)
-
-@dataclass
-class TranscriptSegment:
-    """Represents a single SRT caption segment with timing."""
-    index: int
-    start_time: str
-    end_time: str
-    text: str
-    
-    def to_seconds(self, time_str: str) -> float:
-        """Convert SRT timestamp to seconds."""
-        # Format: HH:MM:SS,mmm or MM:SS,mmm
-        time_str = time_str.replace(',', '.')
-        parts = time_str.split(':')
-        if len(parts) == 3:
-            h, m, s = parts
-            return int(h) * 3600 + int(m) * 60 + float(s)
-        elif len(parts) == 2:
-            m, s = parts
-            return int(m) * 60 + float(s)
-        return 0.0
 
 
 class FactGrounder:

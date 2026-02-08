@@ -9,80 +9,11 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-from dataclasses import dataclass, asdict
 from contextlib import contextmanager
+from src.core.models import Video, ContentOutput, GroundingReport
 
 # Initialize logger
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class Video:
-    """Represents a processed video."""
-    id: Optional[int] = None
-    filename: str = ""
-    file_path: str = ""
-    file_size_mb: float = 0.0
-    duration_seconds: Optional[int] = None
-    uploaded_at: str = ""
-    platform: str = "General"
-    grounding_enabled: bool = True
-    processing_status: str = "pending"  # pending, processing, completed, failed
-    searchable_text: str = ""  # New: Metadata blob for semantic search
-    
-    def to_dict(self):
-        """Convert to dictionary."""
-        return asdict(self)
-
-
-@dataclass
-class ContentOutput:
-    """Represents a generated content output."""
-    id: Optional[int] = None
-    video_id: int = 0
-    content_type: str = ""  # captions, blog_post, social_post, shorts_idea, thumbnail_idea
-    content: str = ""
-    metadata: str = "{}"  # JSON string for additional data
-    version: int = 1
-    created_at: str = ""
-    grounding_rate: Optional[float] = None
-    validation_status: Optional[str] = None
-    
-    def to_dict(self):
-        """Convert to dictionary."""
-        data = asdict(self)
-        # Parse JSON metadata
-        if isinstance(data['metadata'], str):
-            try:
-                data['metadata'] = json.loads(data['metadata'])
-            except:
-                data['metadata'] = {}
-        return data
-
-
-@dataclass
-class GroundingReport:
-    """Represents a fact-grounding validation report."""
-    id: Optional[int] = None
-    video_id: int = 0
-    blog_grounding_rate: float = 0.0
-    social_grounding_rate: float = 0.0
-    shorts_verification_rate: float = 0.0
-    total_claims: int = 0
-    verified_claims: int = 0
-    unverified_claims: int = 0
-    full_report: str = "{}"  # JSON string
-    created_at: str = ""
-    
-    def to_dict(self):
-        """Convert to dictionary."""
-        data = asdict(self)
-        if isinstance(data['full_report'], str):
-            try:
-                data['full_report'] = json.loads(data['full_report'])
-            except:
-                data['full_report'] = {}
-        return data
 
 
 class Database:
@@ -235,22 +166,7 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM videos WHERE id = ?", (video_id,))
-            row = cursor.fetchone()
-            
-            if row:
-                return Video(
-                    id=row['id'],
-                    filename=row['filename'],
-                    file_path=row['file_path'],
-                    file_size_mb=row['file_size_mb'],
-                    duration_seconds=row['duration_seconds'],
-                    uploaded_at=row['uploaded_at'],
-                    platform=row['platform'],
-                    grounding_enabled=bool(row['grounding_enabled']),
-                    processing_status=row['processing_status'],
-                    searchable_text=row['searchable_text'] if 'searchable_text' in row.keys() else ""
-                )
-            return None
+            return Video.from_row(cursor.fetchone())
     
     def get_all_videos(self, limit: int = 100, offset: int = 0) -> List[Video]:
         """Get all videos with pagination."""
@@ -261,44 +177,7 @@ class Database:
                 ORDER BY uploaded_at DESC 
                 LIMIT ? OFFSET ?
             """, (limit, offset))
-            
-            videos = []
-            for row in cursor.fetchall():
-                videos.append(Video(
-                    id=row['id'],
-                    filename=row['filename'],
-                    file_path=row['file_path'],
-                    file_size_mb=row['file_size_mb'],
-                    duration_seconds=row['duration_seconds'],
-                    uploaded_at=row['uploaded_at'],
-                    platform=row['platform'],
-                    grounding_enabled=bool(row['grounding_enabled']),
-                    processing_status=row['processing_status'],
-                    searchable_text=row['searchable_text'] if 'searchable_text' in row.keys() else ""
-                ))
-            
-            return videos
-    
-    def get_video(self, video_id: int) -> Optional[Video]:
-        """Get a video by ID."""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM videos WHERE id = ?", (video_id,))
-            row = cursor.fetchone()
-            
-            if row:
-                return Video(
-                    id=row['id'],
-                    filename=row['filename'],
-                    file_path=row['file_path'],
-                    file_size_mb=row['file_size_mb'],
-                    duration_seconds=row['duration_seconds'],
-                    uploaded_at=row['uploaded_at'],
-                    platform=row['platform'],
-                    grounding_enabled=bool(row['grounding_enabled']),
-                    processing_status=row['processing_status']
-                )
-            return None
+            return [Video.from_row(row) for row in cursor.fetchall()]
 
     def update_video_status(self, video_id: int, status: str):
         """Update video processing status."""
@@ -325,14 +204,14 @@ class Database:
         Save a content output.
         
         Args:
-            content: ContentOutput dataclass instance
+            content: ContentOutput instance
             
         Returns:
             content_id: ID of the saved content
         """
         # Serialize metadata if it's a dict
         metadata_str = content.metadata
-        if isinstance(metadata_str, dict):
+        if isinstance(metadata_str, (dict, list)):
             metadata_str = json.dumps(metadata_str)
         
         with self.get_connection() as conn:
@@ -362,21 +241,7 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM content_outputs WHERE id = ?", (content_id,))
-            row = cursor.fetchone()
-            
-            if row:
-                return ContentOutput(
-                    id=row['id'],
-                    video_id=row['video_id'],
-                    content_type=row['content_type'],
-                    content=row['content'],
-                    metadata=row['metadata'],
-                    version=row['version'],
-                    created_at=row['created_at'],
-                    grounding_rate=row['grounding_rate'],
-                    validation_status=row['validation_status']
-                )
-            return None
+            return ContentOutput.from_row(cursor.fetchone())
     
     def get_content_by_video(self, video_id: int, content_type: Optional[str] = None) -> List[ContentOutput]:
         """
@@ -405,21 +270,7 @@ class Database:
                     ORDER BY content_type, version DESC, created_at DESC
                 """, (video_id,))
             
-            contents = []
-            for row in cursor.fetchall():
-                contents.append(ContentOutput(
-                    id=row['id'],
-                    video_id=row['video_id'],
-                    content_type=row['content_type'],
-                    content=row['content'],
-                    metadata=row['metadata'],
-                    version=row['version'],
-                    created_at=row['created_at'],
-                    grounding_rate=row['grounding_rate'],
-                    validation_status=row['validation_status']
-                ))
-            
-            return contents
+            return [ContentOutput.from_row(row) for row in cursor.fetchall()]
     
     def get_latest_content(self, video_id: int, content_type: str) -> Optional[ContentOutput]:
         """Get the latest version of a specific content type for a video."""
@@ -481,21 +332,7 @@ class Database:
                 LIMIT 1
             """, (video_id,))
             
-            row = cursor.fetchone()
-            if row:
-                return GroundingReport(
-                    id=row['id'],
-                    video_id=row['video_id'],
-                    blog_grounding_rate=row['blog_grounding_rate'],
-                    social_grounding_rate=row['social_grounding_rate'],
-                    shorts_verification_rate=row['shorts_verification_rate'],
-                    total_claims=row['total_claims'],
-                    verified_claims=row['verified_claims'],
-                    unverified_claims=row['unverified_claims'],
-                    full_report=row['full_report'],
-                    created_at=row['created_at']
-                )
-            return None
+            return GroundingReport.from_row(cursor.fetchone())
     
     # ==================== ANALYTICS & SEARCH ====================
     
